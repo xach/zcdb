@@ -1,0 +1,222 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <link rel='stylesheet' type='text/css' href='style.css'>
+    <title>ZCDB - Read and write cdb files from Common Lisp</title>
+    </head>
+  <body>
+
+<div id='content'>
+ <h2>ZCDB - Read and write cdb files from Common Lisp</h2>
+
+ <p>ZCDB is a Common Lisp library for reading and writing
+ D. J. Bernstein's fast and simple
+   <a href="http://cr.yp.to/cdb.html">cdb database file format</a>. It
+   is available under a BSD-style <a href='#license'>license</a>. The
+   current version is 1.0, released on May 17, 2010.
+
+ <p>Download shortcut: <a href='http://www.xach.com/lisp/zcdb.tgz'>http://www.xach.com/lisp/zcdb.tgz</a>
+
+ <h2>Contents</h2>
+
+ <ul>
+   <li> <a href='#overview'>Overview</a>
+   <li> <a href='#example'>Example Use</a>
+   <li> <a href='#limitations'>Limitations</a>
+   <li> <a href='#dictionary'>The ZCDB Dictionary</a>
+     <ul>
+       <li> <a href='#with-output-to-cdb'><code>with-output-to-cdb</code></a>
+       <li> <a href='#add-record'><code>add-record</code></a>
+       <li> <a href='#lookup'><code>lookup</code></a>
+       <li> <a href='#map-cdb'><code>map-cdb</code></a>
+     </ul>
+   <li> <a href='#feedback'>Feedback</a>
+ </ul>
+
+ <a name='overview'><h2>Overview</h2></a>
+
+ <p>ZCDB is for reading and writing from CDB files. CDB files are
+ described in more detail on
+ D.J. Bernstein's <a href="http://cr.yp.to/cdb.html">CDB information
+ page</a>. The CDB file format makes it easy to quickly retrieve
+ data associated with an arbitrary binary key.
+
+ <p>Once written, CDB files cannot be updated with new records. In
+ ZCDB, a CDB file is written out
+ with <a href='#with-output-to-cdb'><tt>WITH-OUTPUT-TO-CDB</tt></a>
+ and <a href='#add-record'><tt>ADD-RECORD</tt></a>, then read
+ with <a href='#lookup'><tt>LOOKUP</tt></a>.
+
+ <a name='example'><h2>Example Use</h2></a>
+
+<p>Here is a simple way to convert a Unix system password file to a
+  CDB file:
+
+<pre class='code'>
+(defpackage #:pwdb
+  (:use #:cl #:zcdb))
+
+(defun username (password-line)
+  (let ((end (position #\: password-line)))
+    (subseq password-line 0 end)))
+
+(defun string-octets (string)
+  (babel:string-to-octets string :encoding :utf-8))
+
+(defun octets-string (octets)
+  (babel:octets-to-string octets :encoding :utf-8))
+
+(defun make-password-cdb (password-file cdb-file temp-file)
+  (with-open-file (stream password-file)
+    (<a href='#with-output-to-cdb'>with-output-to-cdb</a> (cdb cdb-file temp-file)
+      (loop for line = (read-line stream nil)
+            while line do
+            (let ((username (username line)))
+              (<a href='#add-record'>add-record</a> (string-octets username)
+                          (string-octets line)
+                          cdb))))))
+
+(defun user-info (username cdb-file)
+  (let ((entry (<a href='#lookup'>lookup</a> (string-octets username) cdb-file)))
+    (when entry
+      (octets-string entry))))
+</pre>
+
+<p>Then the database can be created and queried:
+
+<pre class='code'>
+* <b>(make-password-cdb "/etc/passwd" "/tmp/pwdb.cdb" "/tmp/pwdb.cdb.tmp")</b>
+#P"/tmp/pwdb.cdb"
+
+* <b>(user-info "root" "/tmp/pwdb.cdb")</b>
+"root:*:0:0:System Administrator:/var/root:/bin/sh"
+</pre>
+
+
+ <a name='limitations'><h2>Limitations</h2></a>
+
+ <p>The CDB file format offers many opportunities for low-level
+ interaction, including writing and reading records that don't fit in
+ memory by writing or reading them incrementally. ZCDB currently only
+ offers a simplified interface that works with keys and values that
+ are fully loaded in memory as <tt>(unsigned-byte&nbsp;8)</tt>
+ vectors.
+
+ <p>ZCDB does not provide any functions for serializing various data
+ types (such as strings) to vectors. There are many other third-party
+ libraries for that purpose.
+
+ <a name='dictionary'><h2>The ZCDB Dictionary</h2></a>
+
+ <p>ZCDB exports the following symbols.
+
+ <div class='item'>
+   <div class='type'><a name='with-output-to-cdb'>[Macro]</a></div>
+   <div class='signature'>
+     <code class='name'>with-output-to-cdb</code>
+     <span class='args'>(<var>cdb</var> <var>cdb-pathname</var> 
+       <var>temporary-pathname</var>) 
+       <code class='llkw'>&amp;body</code> <var>body</var>
+     </span>
+     <span class='result'>=> |</span>
+   </div>
+
+   <blockquote class='description'>
+     <p>Evaluates <var>body</var> with <var>cdb</var> bound to a cdb
+     writer object. <var>cdb</var> may be used as the target
+     of <a href='#add-record'><tt>ADD-RECORD</tt></a> operations.
+
+       
+     <p>The cdb in progress is written
+     to <var>temporary-pathname</var>. Any existing file with that
+     pathname is overwritten. When writing completes
+     successfully, <var>temporary-pathname</var> is renamed
+     to <var>cdb-pathname</var>
+     with <a href='http://l1sp.org/cl/rename-file'><tt>CL:RENAME-FILE</tt></a>. For
+     atomic operation, both files should be on the same filesystem.
+   </blockquote>
+
+
+   <div class='item'>
+     <div class='type'><a name='add-record'>[Function]</a></div>
+     <div class='signature'>
+       <code class='name'>add-record</code>
+       <span class='args'>
+	 <var>key</var> <var>value</var> <var>cdb</var>
+       </span>
+       <span class='result'>=> |</span>
+     </div>
+
+     <blockquote class='description'>
+       <p>Adds a record for <var>key</var> and <var>value</var>
+	 to <var>cdb</var>, which should be a cdb writer object created in
+	 the dynamic scope
+	 of <a href='#with-output-to-cdb'><tt>WITH-OUTPUT-TO-CDB</tt></a>.
+
+       <p><var>key</var> and <var>value</var> must both be vectors
+	 specialized to hold
+	 <tt>(unsigned-byte 8)</tt> data.
+     </blockquote>
+   </div>
+
+   <div class='item'>
+     <div class='type'><a name='lookup'>[Function]</a></div>
+     <div class='signature'>
+       <code class='name'>lookup</code>
+       <span class='args'>
+	 <var>key</var> <var>cdb</var>
+       </span>
+       <span class='result'>=> value</span>
+     </div>
+
+     <blockquote class='description'>
+       <p>Looks up <var>key</var> in <var>cdb</var> and returns its
+	 value, or nil if no record in <var>cdb</var> has the given key.
+
+       <p><var>key</var> must be a specialized <tt>(unsigned-byte&nbsp;8)</tt>
+	 vector. If the value is not null, it will also be a
+	 specialized <tt>(unsigned-byte&nbsp;8)</tt> vector.
+
+       <p><var>cdb</var> must be either a pathname, or an input stream
+       of element-type <tt>(unsigned-byte&nbsp;8)</tt> that can be
+       repositioned
+       with <a href='http://l1sp.org/cl/file-position'><tt>CL:FILE-POSITION</tt></a>.
+     </blockquote>
+   </div>
+
+   <div class='item'>
+     <div class='type'><a name='map-cdb'>[Function]</a></div>
+     <div class='signature'>
+       <code class='name'>map-cdb</code>
+       <span class='args'>
+	 <var>function</var> <var>cdb</var>
+       </span>
+       <span class='result'>=> |</span>
+     </div>
+
+     <blockquote class='description'>
+       <p>For each record in <var>cdb</var>, <var>function</var> is called with
+       two arguments, the key vector and the value vector,
+       respectively.
+
+       <p><var>cdb</var> must be either a pathname, or an input stream
+       of element-type <tt>(unsigned-byte&nbsp;8)</tt> that can be
+       repositioned
+       with <a href='http://l1sp.org/cl/file-position'><tt>CL:FILE-POSITION</tt></a>.
+     </blockquote>
+   </div>
+
+
+<a name='feedback'><h2>Feedback</h2></a>
+
+  <p>If you have any questions or comments about ZS3, please email
+  me, <a href='mailto:xach@xach.com'>Zach Beane</a>.
+
+  <p><i>2010-09-18</i>
+  
+ <p class='copyright'>Copyright &copy; 2010 Zachary Beane, All Rights Reserved
+
+ </div>
+ 
+
+ 
