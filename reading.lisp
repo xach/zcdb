@@ -40,8 +40,8 @@
         (when (= hash test-hash)
           (let ((value (lookup-record-at record-position key stream)))
             (when value
-              (return value))
-            (setf slot (mod (1+ slot) slot-count))))))))
+              (return value)))))
+      (setf slot (mod (1+ slot) slot-count)))))
 
 (defun stream-lookup (key stream)
   (let* ((hash (cdb-hash key))
